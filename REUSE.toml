@@ -1,0 +1,18 @@
+version = 1
+
+[[annotations]]
+path = [
+  "README.md",
+]
+SPDX-FileCopyrightText = "GARDENA GmbH"
+SPDX-License-Identifier = "LGPL-2.0-or-later"
+
+# The sources can be found here: https://github.com/husqvarnagroup/smart-garden-lemonbeat-serializer
+[[annotations]]
+path = [
+  "lemonbeat/lib/aarch64-linux-gnu/liblsdl-serializer.so",
+  "lemonbeat/lib/arm-linux-gnueabihf/liblsdl-serializer.so",
+  "lemonbeat/lib/x86_64-linux-gnu/liblsdl-serializer.so",
+]
+SPDX-FileCopyrightText = "Copyright (c) 2019, Lemonbeat GmbH, Revierstraße 3 in 44379 Dortmund, Germany"
+SPDX-License-Identifier = "BSD-3-Clause"
