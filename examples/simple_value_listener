@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: GARDENA GmbH
+#
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
+"""Simple lemonbeat value listener example
+
+This script demonstrates the use of the lemonbeat module's service listeners.
+It starts a device description listener and a value listener. Whitelisted
+devices are included automatically, value reports are printed on reception and
+known devices are printed regularly.
+"""
+
+import inspect
+# import logging
+import os
+import sys
+import time
+
+# logging.basicConfig(level=logging.DEBUG)
+
+# In order to make this example usable out of the box, extend Python's module
+# search path, such that the lemonbeat module will be found in the parent
+# directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))))
+
+from lemonbeat import Device, Service, DeviceDescriptionType, Hex, RequestTimeoutError, config_file
+
+# Whitelist of device SGTINs this script will automatically include.
+DEVICE_SGTINS = [Hex("3034f8ee90126d400000df75")]
+
+gw, _ = config_file.load()
+gw.include()
+devices = {}
+
+
+def is_included(device_description):
+    return device_description[DeviceDescriptionType.INCLUDED] == 1
+
+
+def needs_inclusion(device_description, _address):
+    sgtin = device_description[DeviceDescriptionType.SGTIN]
+    return sgtin in DEVICE_SGTINS
+
+
+# NOTE: Due to Python's global interpreter lock, this is ok being called from a
+# thread.
+def device_description_handler(address, device_description):
+    address = address[0]
+    sgtin = device_description[DeviceDescriptionType.SGTIN]
+    name = device_description[DeviceDescriptionType.NAME]
+    print("Received device description from {}, SGTIN: {}, Name: {}".format(address, sgtin, name))
+    if not is_included(device_description):
+        if needs_inclusion(device_description, address):
+            # include device
+            print("Including device.")
+            device = Device(gw, address)
+            device.include()
+            devices[address] = [device, device_description, {}]
+        return
+    # update device description
+    if address not in devices:
+        device = Device(gw, address)
+        devices[address] = [device, device_description, {}]
+    devices[address][1] = device_description
+
+
+# NOTE: Due to Python's global interpreter lock, this is ok being called from a
+# thread.
+def value_handler(address, value_report):
+    address = address[0]
+    print("Received value report from {}".format(address))
+    if address not in devices:
+        print("    Unknown device, getting device description.")
+        device = Device(gw, address)
+        try:
+            device_desc = device.get_device_description()
+        except RequestTimeoutError:
+            return
+        device_description_handler((address,), device_desc)
+    for value in value_report:
+        # update value cache
+        print("    Value ID: {}, Value: {}, Timestamp: {}".format(value.value_id, value.value, value.timestamp))
+        devices[address][2][value.value_id] = value
+
+
+def main():
+    gw.start_service_listener(Service.DEVICE_DESCRIPTION, handler=device_description_handler)
+    gw.start_service_listener(Service.VALUE, handler=value_handler)
+
+    while True:
+        time.sleep(10)
+        print()
+        print("# Known devices #")
+        for address, (_, device_description, values) in devices.items():
+            sgtin = device_description[DeviceDescriptionType.SGTIN]
+            name = device_description[DeviceDescriptionType.NAME]
+            print("Device: {}, SGTIN: {}, Name: {}".format(address, sgtin, name))
+            for value_id, value in values.items():
+                print("    Value ID {}: Value: {}, Timestamp: {}".format(value_id, value.value, value.timestamp))
+        print("#################")
+        print()
+
+
+if __name__ == "__main__":
+    main()

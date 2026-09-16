@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: GARDENA GmbH
+#
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
+# TODO print traffic class of received messages
+
+import argparse
+import functools
+import inspect
+import os
+import sys
+
+# In order to make this example usable out of the box, extend Python's module
+# search path, such that the lemonbeat module will be found in the parent
+# directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))))
+
+from lemonbeat import *
+
+
+def print_cache(value_description, value_cache):
+    os.system('clear')  # ugly hack, but short
+    name_length = max(len(description['name']) for description in value_description.values())
+    for value_id, description in value_description.items():
+        try:
+            value = value_cache[value_id]
+        except KeyError:
+            formatted_value = ''
+        else:
+            formatted_value = f'{value!r}'
+        print(f'{value_id:2} - {description["name"]:{name_length}} : {formatted_value}')
+    print()
+    print("Press return to clear the cache or 'q' + return to exit")
+
+
+def value_handler(device_address, value_description, value_cache, address, data):
+    if address[0] != device_address:
+        return
+    for report in data:
+        value_cache[report.value_id] = report.value
+    print_cache(value_description, value_cache)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        'device_address', help="IPv6 Address of the remote device which value reports will be observed.")
+    return parser.parse_args()
+
+
+def main(*, device_address):
+    gw = Gateway(inclusion_message=None)
+    device = Device(gw, device_address)
+    print(f"Requesting value description from {device_address}.")
+    value_description = device.get_value_description()
+    value_cache = {}
+    print(f"Start observing value reports from {device_address}.")
+    print("Press 'q' + return to exit")
+    gw.start_service_listener(
+        Service.VALUE, handler=functools.partial(value_handler, device_address, value_description, value_cache))
+    while True:
+        inp = input()
+        if inp == 'q':
+            sys.exit()    
+        value_cache.clear()
+        print_cache(value_description, value_cache)
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    main(device_address=args.device_address)

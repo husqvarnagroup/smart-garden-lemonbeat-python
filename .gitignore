@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: GARDENA GmbH
+#
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
+__pycache__/
+*.py[cod]
+/Pipfile.lock
+
+.mypy_cache/
+.ipynb_checkpoints/
+.pytest_cache/
+
+.idea/
+.*.swp

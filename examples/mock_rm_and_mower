@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: GARDENA GmbH
+#
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
+import inspect
+import logging
+import os
+import sys
+import threading
+import time
+
+# In order to make this example usable out of the box, extend Python's module
+# search path, such that the lemonbeat module will be found in the parent
+# directory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))))
+
+from lemonbeat import *
+from lemonbeat.device_emulation import DeviceEmulation, RadioModuleEmulation
+from lemonbeat.mower_helpers import unpack_data_download_int
+
+
+def main():
+    logging.getLogger().setLevel("DEBUG")
+
+    shadoway_address = 'fe80::106:94bb:ae03:3fe4%enp0s31f6'
+
+    rm_device_description = {
+        DeviceDescriptionType.SGTIN: Hex('3034f8ee90155b400000a6fd'),
+        DeviceDescriptionType.MAC_ADDRESS: Hex('94bbae033fe4'),
+    }
+    rm_emulation = RadioModuleEmulation(controller_address=shadoway_address, device_description=rm_device_description)
+    rm_emulation.start_services()
+
+    mower_device_description = {
+        DeviceDescriptionType.DEVICE_TYPE: 10,
+        DeviceDescriptionType.SGTIN: Hex('00000000000000003f33841c'),
+        DeviceDescriptionType.MAC_ADDRESS: Hex('2f453f33841c'),
+        DeviceDescriptionType.APPLICATION_VERSION: '0.2.3',
+        DeviceDescriptionType.NAME: 'SG Mower LONA MOCK',
+        DeviceDescriptionType.DIVERSITY_MODE: 1,
+    }
+    mower_value_description = {
+        1: {'mode': ValueMode.R, 'name': 'battery_level', 'persistent': False, 'type_id': 17, 'max': 100, 'min': 0,
+            'step': 1, 'unit': '%', 'type': int},
+        2: {'mode': ValueMode.R, 'name': 'rf_link_quality', 'persistent': False, 'type_id': 17, 'max': 100, 'min': 0,
+            'step': 1, 'unit': '%', 'type': int},
+        3: {'mode': ValueMode.R, 'name': 'manual_operation', 'persistent': False, 'type_id': 17, 'max': 1, 'min': 0,
+            'step': 1, 'unit': '', 'type': int},
+        4: {'mode': ValueMode.R, 'name': 'status', 'persistent': False, 'type_id': 17, 'max': 18, 'min': 0, 'step': 1,
+            'unit': '', 'type': int},
+        5: {'mode': ValueMode.R, 'name': 'timestamp_next_start', 'persistent': False, 'type_id': 17, 'max_length': 4,
+            'type': Hex},
+        6: {'mode': ValueMode.R, 'name': 'source_for_next_start', 'persistent': False, 'type_id': 17, 'max': 5,
+            'min': 0, 'step': 1, 'unit': '', 'type': int},
+        7: {'mode': ValueMode.RW, 'name': 'command', 'persistent': False, 'type_id': 17, 'max': 42, 'min': 0, 'step': 1,
+            'unit': '', 'type': int},
+        8: {'mode': ValueMode.RW, 'name': 'mower_timer', 'persistent': False, 'type_id': 17, 'max': 16777216,
+            'min': -16777215, 'step': 1, 'unit': 's', 'type': int},
+        9: {'mode': ValueMode.RW, 'name': 'action_paused_until_1', 'persistent': True, 'type_id': 17, 'max_length': 6,
+            'type': Hex},
+        10: {'mode': ValueMode.RW, 'name': 'start_delay_ms', 'persistent': True, 'type_id': 17, 'max': 59999, 'min': 0,
+             'step': 1, 'unit': 'ms', 'type': int},
+        11: {'mode': ValueMode.RW, 'name': 'schedule_config', 'persistent': False, 'type_id': 17, 'max_length': 98,
+             'type': Hex},
+        12: {'mode': ValueMode.R, 'name': 'mmi_version', 'persistent': False, 'type_id': 17, 'max_length': 10,
+             'type': str},
+        13: {'mode': ValueMode.R, 'name': 'mainboard_version', 'persistent': False, 'type_id': 17, 'max_length': 10,
+             'type': str},
+        14: {'mode': ValueMode.R, 'name': 'device_type', 'persistent': False, 'type_id': 17, 'max_length': 4,
+             'type': str},
+        15: {'mode': ValueMode.R, 'name': 'device_variant', 'persistent': False, 'type_id': 17, 'max_length': 4,
+             'type': str},
+        16: {'mode': ValueMode.R, 'name': 'running_time', 'persistent': False, 'type_id': 17, 'max': 65535, 'min': 0,
+             'step': 1, 'unit': '', 'type': int},
+        17: {'mode': ValueMode.R, 'name': 'cutting_time', 'persistent': False, 'type_id': 17, 'max': 65535, 'min': 0,
+             'step': 1, 'unit': '', 'type': int},
+        18: {'mode': ValueMode.R, 'name': 'charging_cycles', 'persistent': False, 'type_id': 17, 'max': 65535, 'min': 0,
+             'step': 1, 'unit': '', 'type': int},
+        19: {'mode': ValueMode.R, 'name': 'collisions', 'persistent': False, 'type_id': 17, 'max': 65535, 'min': 0,
+             'step': 1, 'unit': '', 'type': int},
+        20: {'mode': ValueMode.R, 'name': 'last_error_code', 'persistent': False, 'type_id': 17, 'max': 65535, 'min': 0,
+             'step': 1, 'unit': '', 'type': int},
+        21: {'mode': ValueMode.R, 'name': 'timestamp_last_error_code', 'persistent': False, 'type_id': 17,
+             'max_length': 4, 'type': Hex},
+        22: {'mode': ValueMode.RW, 'name': 'starting_points', 'persistent': False, 'type_id': 17, 'max_length': 18,
+             'type': Hex},
+        23: {'mode': ValueMode.R, 'name': 'supported_wires', 'persistent': False, 'type_id': 17, 'max': 255, 'min': 0,
+             'step': 1, 'unit': '', 'type': int},
+        24: {'mode': ValueMode.R, 'name': 'supported_starting_points', 'persistent': False, 'type_id': 17, 'max': 3,
+             'min': 1, 'step': 1, 'unit': '', 'type': int},
+        25: {'mode': ValueMode.R, 'name': 'serial_number', 'persistent': False, 'type_id': 17, 'max_length': 10,
+             'type': str},
+        26: {'mode': ValueMode.R, 'name': 'internal_connection_state', 'persistent': False, 'type_id': 17, 'max': 5,
+             'min': 0, 'step': 1, 'unit': '', 'type': int},
+        27: {'mode': ValueMode.R, 'name': 'onboard_temperature', 'persistent': False, 'type_id': 17, 'max': 225.0,
+             'min': -50.0, 'step': 0.100000001, 'unit': '°C', 'type': float},
+        28: {'mode': ValueMode.RW, 'name': 'settings_control', 'persistent': False, 'type_id': 17, 'max_length': 32,
+             'type': Hex},
+        29: {'mode': ValueMode.R, 'name': 'settings_report', 'persistent': False, 'type_id': 17, 'max_length': 16,
+             'type': Hex},
+        30: {'mode': ValueMode.R, 'name': 'position', 'persistent': False, 'type_id': 17, 'max_length': 25,
+             'type': Hex},
+        31: {'mode': ValueMode.R, 'name': 'gnss', 'persistent': False, 'type_id': 17, 'max_length': 31, 'type': Hex},
+        32: {'mode': ValueMode.RW, 'name': 'position_timer', 'persistent': False, 'type_id': 17, 'max': 3600, 'min': 0,
+             'step': 1, 'unit': 's', 'type': int},
+        33: {'mode': ValueMode.RW, 'name': 'position_update_interval', 'persistent': True, 'type_id': 17,
+             'max': 3600000, 'min': 1, 'step': 1, 'unit': 'ms', 'type': int},
+        34: {'mode': ValueMode.RW, 'name': 'stop_and_turn', 'persistent': False, 'type_id': 17, 'max': 180, 'min': -180,
+             'step': 1, 'unit': 'deg', 'type': int},
+        35: {'mode': ValueMode.RW, 'name': 'lona_control', 'persistent': True, 'type_id': 17, 'max': 1, 'min': 0,
+             'step': 1, 'unit': '', 'type': int},
+        36: {'mode': ValueMode.R, 'name': 'lona', 'persistent': False, 'type_id': 17, 'max_length': 512, 'type': Hex},
+        37: {'mode': ValueMode.R, 'name': 'lona_mcu_fw_version', 'persistent': False, 'type_id': 17, 'max_length': 8,
+             'type': Hex},
+        38: {'mode': ValueMode.R, 'name': 'lona_mcu_boot_fw_version', 'persistent': False, 'type_id': 17,
+             'max_length': 8, 'type': Hex},
+        39: {'mode': ValueMode.R, 'name': 'data_download', 'persistent': False, 'type_id': 17, 'max_length': 105,
+             'type': Hex},
+        40: {'mode': ValueMode.RW, 'name': 'data_download_int', 'persistent': False, 'type_id': 17, 'max_length': 8,
+             'type': Hex},
+    }
+
+    class MowerEmulation(DeviceEmulation):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.content_tag = {}
+
+        def set_value_hook(self, *, value_id, value, timestamp):
+            try:
+                value_name = self.value_description[value_id]["name"]
+            except KeyError:
+                value_name = None
+            logging.info(f"Value id {value_id} ({value_name}) updated to {value} with timestamp {timestamp}.")
+
+            if value_name == "command" and value == 31:
+                logging.info("Emulating Reboot")
+                if 1 in self.firmware_update:
+                    self.firmware_update_current_id = 1
+
+            elif value_name == "data_download_int":
+                data_download_int = unpack_data_download_int(value)
+                if self.content_tag.get(data_download_int.slot_number) != data_download_int.content_tag:
+                    logging.info(f"Slot {data_download_int.slot_number}, content tag {data_download_int.content_tag}.")
+                    self.content_tag[data_download_int.slot_number] = data_download_int.content_tag
+                    # uploading new file, reset state
+                    try:
+                        del self.firmware_update[data_download_int.slot_number]
+                    except KeyError:
+                        pass
+
+        def firmware_init_hook(self, context):
+            if context["id"] < 255:
+                # The Lemonbeat stack takes unusually long to respond, the stack handles firmware ids <= 254 (sic!).
+                # Emulate a similar behaviour.
+                time.sleep(5)
+            elif (context["previous_state"] is not None and
+                  context["previous_state"]["size"] == context["state"]["size"] and
+                  context["previous_state"]["checksum"] == context["state"]["checksum"]):
+                logging.info("Continuing previous upload.")
+                context["state"].update(context["previous_state"])
+                context["response"][0].expected_offset = context["previous_state"]["current_size"]
+
+        def firmware_data_hook(self, context):
+            state = context["state"]
+            if state["current_size"] == state["size"]:
+                logging.info(f"Uploading firmware id {context['id']} finished. "
+                             f"Checksum {'OK' if state['running_crc16'] == state['checksum'] else 'mismatch'}. "
+                             f"Content-Tag {self.content_tag.get(context['id'])}.")
+
+        def firmware_update_start_hook(self, context):
+            if context["id"] == 1:
+                def emulate_update_exclude():
+                    # fake application version
+                    self.device_description[DeviceDescriptionType.APPLICATION_VERSION] = "255.255.255"
+                    self.included = False
+
+                logging.info(f"Excluding device {self.address} for emulating FOTA.")
+                t = threading.Timer(10, emulate_update_exclude)
+                t.start()
+
+            # reset state
+            try:
+                del self.firmware_update[context["id"]]
+            except KeyError as e:
+                logging.exception(e)
+
+    mower_emulation = MowerEmulation(address='fc00::6:0:0:1', controller_address=shadoway_address,
+                                     device_description=mower_device_description,
+                                     value_description=mower_value_description)
+
+    nan = float('nan')
+    mower_emulation.value.update({
+        1: 70.0,
+        2: 70.0,
+        3: 0.0,
+        4: 3.0,
+        5: Hex('613ba782'),
+        6: 4.0,
+        7: nan,
+        8: 0.0,
+        9: Hex('b20701010000'),
+        10: 0.0,
+        11: Hex('007f0800da0200'),
+        12: '35.5',
+        13: '35.5',
+        14: '14',
+        15: '8',
+        16: 0.0,
+        17: 0.0,
+        18: 10.0,
+        19: 0.0,
+        20: 0.0,
+        21: Hex('00000000'),
+        22: Hex('026300140100020000000000020000000000'),
+        23: 4.0,
+        24: 3.0,
+        25: '192103237',
+        26: 3.0,
+        27: nan,
+        28: Hex(''),
+        29: Hex('ffffffffffffffff003c200000070000'),
+        30: Hex(''),
+        31: Hex(''),
+        32: 0.0,
+        33: 3000.0,
+        34: nan,
+        35: 0.0,
+        36: Hex(''),
+        37: Hex('0002040000000000'),
+        38: Hex('0002010000000000'),
+        39: Hex('0000010167cc2312000483ac2c8301'),
+        40: Hex(''),
+    })
+
+    mower_emulation.start_services()
+    mower_emulation.start_device_description_sender()
+
+    # wait forever
+    threading.Event().wait()
+
+
+if __name__ == '__main__':
+    sys.exit(main())

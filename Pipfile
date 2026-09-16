@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: GARDENA GmbH
+#
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
+[packages]
+crcmod = "*"
+pycryptodomex = "*"
+pyxdg = "*"
+toml = "*"
+
+[dev-packages]
+coverage = "*"
+pytest = "*"
+ipython = "*"
